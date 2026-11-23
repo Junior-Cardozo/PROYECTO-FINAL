@@ -1,0 +1,207 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using MonitorServidores.Data;
+using MonitorServidores.Models;
+
+namespace MonitorServidores.Controllers;
+
+[ApiController]
+[Route("api/servidores")]
+[Authorize]
+public class ServidoresController : ControllerBase
+{
+    private readonly MonitorDbContext _context;
+
+    public ServidoresController(MonitorDbContext context)
+    {
+        _context = context;
+    }
+
+    [HttpGet]
+    public async Task<IActionResult> GetServidores()
+    {
+        var servidores = await _context.Servidores
+            .AsNoTracking()
+            .Where(s => s.Activo)
+            .OrderBy(s => s.Id)
+            .Select(s => new
+            {
+                s.Id,
+                s.Nombre,
+                s.DireccionIp,
+                s.Descripcion,
+                s.Activo,
+                s.FechaRegistro,
+                s.TipoServidorId,
+                s.SistemaOperativoId
+            })
+            .ToListAsync();
+
+        return Ok(servidores);
+    }
+
+    [HttpGet("{id:int}")]
+    public async Task<IActionResult> GetServidor(int id)
+    {
+        var servidor = await _context.Servidores
+            .AsNoTracking()
+            .Where(s => s.Id == id && s.Activo)
+            .Select(s => new
+            {
+                s.Id,
+                s.Nombre,
+                s.DireccionIp,
+                s.Descripcion,
+                s.Activo,
+                s.FechaRegistro,
+                s.TipoServidorId,
+                s.SistemaOperativoId
+            })
+            .FirstOrDefaultAsync();
+
+        if (servidor == null)
+        {
+            return NotFound(new
+            {
+                mensaje = "Servidor no encontrado."
+            });
+        }
+
+        return Ok(servidor);
+    }
+
+
+    [HttpPost]
+    public async Task<IActionResult> PostServidor(
+        [FromBody] CrearServidorDto datos)
+    {
+        if (string.IsNullOrWhiteSpace(datos.Nombre) ||
+            string.IsNullOrWhiteSpace(datos.DireccionIp))
+        {
+            return BadRequest(new
+            {
+                mensaje = "El nombre y la dirección IP son obligatorios."
+            });
+        }
+
+        var servidor = new Servidor
+        {
+            Nombre = datos.Nombre.Trim(),
+            DireccionIp = datos.DireccionIp.Trim(),
+            Descripcion = datos.Descripcion,
+            TipoServidorId = datos.TipoServidorId,
+            SistemaOperativoId = datos.SistemaOperativoId,
+            Activo = true,
+            FechaRegistro = DateTime.UtcNow
+        };
+
+        _context.Servidores.Add(servidor);
+
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction(
+            nameof(GetServidor),
+            new { id = servidor.Id },
+            new
+            {
+                servidor.Id,
+                servidor.Nombre,
+                servidor.DireccionIp,
+                servidor.Descripcion,
+                servidor.Activo,
+                servidor.FechaRegistro,
+                servidor.TipoServidorId,
+                servidor.SistemaOperativoId
+            }
+        
+        );
+    }
+    // PUT: api/servidores/1
+      [HttpPut("{id:int}")]
+      public async Task<IActionResult> PutServidor(
+    int id, [FromBody] CrearServidorDto datos)
+   {
+    var servidor = await _context.Servidores
+        .FirstOrDefaultAsync(s => s.Id == id && s.Activo);
+
+    if (servidor == null)
+        return NotFound(new { mensaje = "Servidor no encontrado." });
+
+    if (string.IsNullOrWhiteSpace(datos.Nombre) ||
+        string.IsNullOrWhiteSpace(datos.DireccionIp))
+        return BadRequest(new { mensaje = "Nombre e IP son obligatorios." });
+        // Validar formato IPv4 o IPv6
+    if (!System.Net.IPAddress.TryParse(datos.DireccionIp.Trim(), out _))
+    {
+    return BadRequest(new
+    {
+        mensaje = "La dirección IP no tiene un formato válido."
+    });
+}
+
+    if (datos.TipoServidorId.HasValue &&
+        !await _context.TiposServidor.AnyAsync(t =>
+            t.Id == datos.TipoServidorId.Value && t.Activo))
+        return BadRequest(new { mensaje = "Tipo de servidor no válido." });
+
+    if (datos.SistemaOperativoId.HasValue &&
+        !await _context.SistemasOperativos.AnyAsync(s =>
+            s.Id == datos.SistemaOperativoId.Value && s.Activo))
+        return BadRequest(new { mensaje = "Sistema operativo no válido." });
+
+    servidor.Nombre = datos.Nombre.Trim();
+    servidor.DireccionIp = datos.DireccionIp.Trim();
+    servidor.Descripcion = datos.Descripcion;
+    servidor.TipoServidorId = datos.TipoServidorId;
+    servidor.SistemaOperativoId = datos.SistemaOperativoId;
+
+    await _context.SaveChangesAsync();
+
+    return NoContent();
+}
+
+// DELETE: api/servidores/1
+// Eliminación lógica
+   [HttpDelete("{id:int}")]
+   public async Task<IActionResult> DeleteServidor(int id)
+   {
+    var servidor = await _context.Servidores
+        .FirstOrDefaultAsync(s => s.Id == id && s.Activo);
+
+    if (servidor == null)
+        return NotFound(new { mensaje = "Servidor no encontrado." });
+
+        // Impedir desactivar servidores con monitoreos activos
+    var tieneMonitoreosActivos = await _context.Monitoreos
+    .AnyAsync(m => m.ServidorId == id && m.Activo);
+
+    if (tieneMonitoreosActivos)
+   {  
+    return Conflict(new
+    {
+        mensaje = "No se puede desactivar un servidor con monitoreos activos."
+    });
+    }
+
+    servidor.Activo = false;
+
+    await _context.SaveChangesAsync();
+
+    return NoContent();
+}
+}
+
+// Datos recibidos para registrar un servidor
+public class CrearServidorDto
+{
+    public string Nombre { get; set; } = string.Empty;
+
+    public string DireccionIp { get; set; } = string.Empty;
+
+    public string? Descripcion { get; set; }
+
+    public int? TipoServidorId { get; set; }
+
+    public int? SistemaOperativoId { get; set; }
+}
