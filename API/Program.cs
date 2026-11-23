@@ -303,6 +303,10 @@ if (!string.IsNullOrEmpty(builder.Configuration["Authentication:Slack:ClientId"]
 // =====================================================
 
 builder.Services.AddAuthorization();
+builder.Services.AddHttpClient("TikTok", client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(20);
+});
 
 // =====================================================
 // 5. CONSTRUIR APLICACIÓN
@@ -456,6 +460,9 @@ app.MapGet("/", () => Results.Content(
                 Iniciar sesión con Slack
             </a>
 
+          <a href="/login/tiktok" class="boton" style="background-color:#111;">
+            Iniciar sesión con TikTok
+            </a>
             <br>
 
             <button class="boton logout" onclick="cerrarSesion()">
@@ -465,6 +472,7 @@ app.MapGet("/", () => Results.Content(
             <h2>Estado de la sesión</h2>
 
             <pre id="estado">Comprobando...</pre>
+
 
             <p>
                 <a href="/scalar/v1">
@@ -625,4 +633,39 @@ app.MapPost("/logout", () =>
 
 app.MapControllers();
 
+// TÉRMINOS DE SERVICIO
+app.MapGet("/terminos", () => Results.Content(
+    """
+    <html lang="es">
+    <head><meta charset="UTF-8"><title>Términos de servicio</title></head>
+    <body>
+        <h1>Términos de servicio - Monitor Servidores</h1>
+        <p>Monitor Servidores es una aplicación académica
+        para gestionar servidores, monitoreos, alertas y reportes.</p>
+        <p>Los usuarios deben utilizar la aplicación de manera
+        responsable y con autorización.</p>
+    </body>
+    </html>
+    """, "text/html; charset=utf-8"));
+
+// POLÍTICA DE PRIVACIDAD
+app.MapGet("/privacidad", () => Results.Content(
+    """
+    <html lang="es">
+    <head><meta charset="UTF-8"><title>Política de privacidad</title></head>
+    <body>
+        <h1>Política de privacidad - Monitor Servidores</h1>
+        <p>La aplicación utiliza autenticación mediante
+        proveedores externos, incluido TikTok.</p>
+        <p>Para gestionar el inicio de sesión se utilizan
+        identificadores y datos básicos del perfil autorizados
+        por el usuario, además de cookies de sesión.</p>
+        <p>Esta política debe completarse con información sobre
+        el responsable, conservación y eliminación de los datos.</p>
+    </body>
+    </html>
+    """, "text/html; charset=utf-8"));
+
+
+app.MapTikTokEndpoints();
 app.Run();
