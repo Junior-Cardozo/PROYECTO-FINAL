@@ -23,6 +23,9 @@ services:
       Authentication__Slack__ClientSecret: ${SLACK_CLIENT_SECRET}
       DROPBOX_REDIRECT_URI: ${DROPBOX_REDIRECT_URI}
       SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI}
+      Authentication__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY}
+      Authentication__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET}
+      TIKTOK_REDIRECT_URI: ${TIKTOK_REDIRECT_URI}
     depends_on:
       postgres:
         condition: service_healthy
