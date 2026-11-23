@@ -50,8 +50,39 @@ services:
       retries: 10
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: monitor-final-prometheus
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: monitor-final-node-exporter
+    ports:
+      - "127.0.0.1:9100:9100"
+    volumes:
+      - /:/host:ro
+    command:
+      - "--path.rootfs=/host"
+      - "--collector.filesystem.mount-points-exclude=^/run/user($|/)"
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
 volumes:
   postgres_data:
+  prometheus_data:
 
 networks:
   monitor_red:
