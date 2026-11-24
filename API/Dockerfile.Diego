@@ -1,0 +1,33 @@
+# ======================================================================
+# Dockerfile de Diego
+# Construye: API/MonitorServidores.csproj (backend integrado del equipo,
+# incluye el módulo de Diego).
+# Prueba:
+#   docker build -f Dockerfile.Diego -t monitor-api:diego .
+#   docker run --rm -p 8080:8080 \
+#     -e ConnectionStrings__Postgres="Host=host.docker.internal;Port=5433;Database=monitor_servidores;Username=admin;Password=TU_PASSWORD" \
+#     monitor-api:diego
+# Imagen final del equipo: Dockerfile (líder).
+# ======================================================================
+
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+COPY MonitorServidores.csproj ./
+RUN dotnet restore
+
+COPY . .
+RUN dotnet publish MonitorServidores.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0
+WORKDIR /app
+COPY --from=build /app/publish .
+
+RUN mkdir -p /keys && chown $APP_UID:$APP_UID /keys
+
+ENV ASPNETCORE_URLS=http://+:8080 \
+    DataProtection__KeysPath=/keys
+
+EXPOSE 8080
+USER $APP_UID
+ENTRYPOINT ["dotnet", "MonitorServidores.dll"]

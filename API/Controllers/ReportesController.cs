@@ -2,12 +2,13 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MonitorServidores.Data;
+using MonitorServidores.Security;
 
 namespace MonitorServidores.Controllers;
 
 [ApiController]
 [Route("api/reportes")]
-[Authorize]
+[Authorize(Policy = Politicas.ReporteServidores)]
 public class ReportesController : ControllerBase
 {
     private readonly MonitorDbContext _context;

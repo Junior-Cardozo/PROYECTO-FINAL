@@ -1,0 +1,122 @@
+# Compose de RELEASE: usa la imagen publicada en Docker Hub (NO compila código).
+# 4 instancias del mismo backend en los puertos 5001-5004 + PostgreSQL.
+# Levantar:  docker compose -f docker-compose.release.yml --env-file .env up -d
+#
+# Imagen: ${DOCKERHUB_USER}/${IMAGE_NAME}:${IMAGE_TAG}
+
+x-backend: &backend
+  image: ${DOCKERHUB_USER}/${IMAGE_NAME:-monitor-api}:${IMAGE_TAG:-1.0.0}
+  pull_policy: always
+  environment: &backend-env
+    ASPNETCORE_URLS: "http://+:8080"
+    ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
+    # Mismas claves de Data Protection en las 4 instancias (volumen compartido /keys)
+    DataProtection__KeysPath: "/keys"
+    Cors__AllowedOrigins: "${FRONTEND_URL:-http://localhost:3000},${PORTAL2_URL:-http://localhost:3001}"
+    Seguridad__AdministradoresIniciales: "${ADMINISTRADORES_INICIALES:-${ROLES_ADMINISTRADOR:-}}"
+    Authentication__Twitch__ClientId: ${TWITCH_CLIENT_ID:-}
+    Authentication__Twitch__ClientSecret: ${TWITCH_CLIENT_SECRET:-}
+    Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+    Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+    Authentication__Discord__ClientId: ${DISCORD_CLIENT_ID:-}
+    Authentication__Discord__ClientSecret: ${DISCORD_CLIENT_SECRET:-}
+    Authentication__Spotify__ClientId: ${SPOTIFY_CLIENT_ID:-}
+    Authentication__Spotify__ClientSecret: ${SPOTIFY_CLIENT_SECRET:-}
+    Authentication__Dropbox__ClientId: ${DROPBOX_CLIENT_ID:-}
+    Authentication__Dropbox__ClientSecret: ${DROPBOX_CLIENT_SECRET:-}
+    Authentication__Slack__ClientId: ${SLACK_CLIENT_ID:-}
+    Authentication__Slack__ClientSecret: ${SLACK_CLIENT_SECRET:-}
+    # TikTok (Login Kit Web). Requiere HTTPS: usa el túnel ngrok (ver docs/ENTREGA.md)
+    Authentication__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY:-}
+    Authentication__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET:-}
+    TIKTOK_REDIRECT_URI: ${TIKTOK_REDIRECT_URI:-}
+    # Dirección pública de la API (ahí se crea la sesión tras el login con TikTok)
+    Api__PublicUrl: "${API_URL:-http://localhost:5001}"
+    DROPBOX_REDIRECT_URI: ${DROPBOX_REDIRECT_URI:-http://localhost:5001/signin-dropbox}
+    SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-https://localhost:8443/signin-slack}
+  volumes:
+    - dp_keys:/keys
+  depends_on:
+    postgres:
+      condition: service_healthy
+  networks:
+    - monitor_red
+  restart: unless-stopped
+
+services:
+  api1:
+    <<: *backend
+    container_name: monitor-api-1
+    ports: ["5001:8080"]
+    environment:
+      <<: *backend-env
+      INSTANCIA_NOMBRE: "api-1"
+      Database__ApplyMigrations: "true"   # solo esta instancia aplica migraciones
+
+  api2:
+    <<: *backend
+    container_name: monitor-api-2
+    ports: ["5002:8080"]
+    environment:
+      <<: *backend-env
+      INSTANCIA_NOMBRE: "api-2"
+      Database__ApplyMigrations: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api1:
+        condition: service_started
+
+  api3:
+    <<: *backend
+    container_name: monitor-api-3
+    ports: ["5003:8080"]
+    environment:
+      <<: *backend-env
+      INSTANCIA_NOMBRE: "api-3"
+      Database__ApplyMigrations: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api1:
+        condition: service_started
+
+  api4:
+    <<: *backend
+    container_name: monitor-api-4
+    ports: ["5004:8080"]
+    environment:
+      <<: *backend-env
+      INSTANCIA_NOMBRE: "api-4"
+      Database__ApplyMigrations: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api1:
+        condition: service_started
+
+  postgres:
+    image: postgres:18
+    container_name: monitor-postgres-release
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data_release:/var/lib/postgresql
+    networks:
+      - monitor_red
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  postgres_data_release:
+  dp_keys:
+
+networks:
+  monitor_red:
+    driver: bridge

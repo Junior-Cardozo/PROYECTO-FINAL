@@ -259,6 +259,31 @@ namespace MonitorServidores.Migrations
                     b.ToTable("PrioridadesIncidente");
                 });
 
+            modelBuilder.Entity("MonitorServidores.Models.Rol", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Descripcion")
+                        .HasMaxLength(300)
+                        .HasColumnType("character varying(300)");
+
+                    b.Property<string>("Nombre")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Nombre")
+                        .IsUnique();
+
+                    b.ToTable("roles");
+                });
+
             modelBuilder.Entity("MonitorServidores.Models.Servidor", b =>
                 {
                     b.Property<int>("Id")
@@ -380,6 +405,64 @@ namespace MonitorServidores.Migrations
                     b.ToTable("TiposIncidente");
                 });
 
+            modelBuilder.Entity("MonitorServidores.Models.Usuario", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("Activo")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Email")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("FechaRegistro")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Nombre")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("Proveedor")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)");
+
+                    b.Property<string>("ProveedorId")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("UltimoAcceso")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Proveedor", "ProveedorId")
+                        .IsUnique();
+
+                    b.ToTable("usuarios");
+                });
+
+            modelBuilder.Entity("RolUsuario", b =>
+                {
+                    b.Property<int>("RolesId")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("UsuariosId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("RolesId", "UsuariosId");
+
+                    b.HasIndex("UsuariosId");
+
+                    b.ToTable("usuarios_roles");
+                });
+
             modelBuilder.Entity("MonitorServidores.Models.TipoServidor", b =>
                 {
                     b.Property<int>("Id")
@@ -490,6 +573,21 @@ namespace MonitorServidores.Migrations
                         .IsRequired();
 
                     b.Navigation("Alerta");
+                });
+
+            modelBuilder.Entity("RolUsuario", b =>
+                {
+                    b.HasOne("MonitorServidores.Models.Rol", null)
+                        .WithMany()
+                        .HasForeignKey("RolesId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MonitorServidores.Models.Usuario", null)
+                        .WithMany()
+                        .HasForeignKey("UsuariosId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("MonitorServidores.Models.Servidor", b =>

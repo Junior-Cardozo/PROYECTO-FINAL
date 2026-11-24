@@ -2,5 +2,7 @@
 **/obj/
 .git/
 .vscode/
+.vs/
 .env
 *.log
+Dockerfile*

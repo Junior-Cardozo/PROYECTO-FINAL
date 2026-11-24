@@ -1,3 +1,5 @@
+# Compose de DESARROLLO: PostgreSQL + backend (build local) + frontend (Nginx)
+# Levantar:  docker compose -f despliegue.yml up -d --build
 services:
   api:
     build:
@@ -8,27 +10,108 @@ services:
       - "127.0.0.1:${API_PORT:-8080}:8080"
     environment:
       ASPNETCORE_URLS: "http://+:8080"
+      INSTANCIA_NOMBRE: "dev"
       ConnectionStrings__Postgres: "Host=postgres;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}"
-      Authentication__Twitch__ClientId: ${TWITCH_CLIENT_ID}
-      Authentication__Twitch__ClientSecret: ${TWITCH_CLIENT_SECRET}
-      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID}
-      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET}
-      Authentication__Discord__ClientId: ${DISCORD_CLIENT_ID}
-      Authentication__Discord__ClientSecret: ${DISCORD_CLIENT_SECRET}
-      Authentication__Spotify__ClientId: ${SPOTIFY_CLIENT_ID}
-      Authentication__Spotify__ClientSecret: ${SPOTIFY_CLIENT_SECRET}
-      Authentication__Dropbox__ClientId: ${DROPBOX_CLIENT_ID}
-      Authentication__Dropbox__ClientSecret: ${DROPBOX_CLIENT_SECRET}
-      Authentication__Slack__ClientId: ${SLACK_CLIENT_ID}
-      Authentication__Slack__ClientSecret: ${SLACK_CLIENT_SECRET}
-      DROPBOX_REDIRECT_URI: ${DROPBOX_REDIRECT_URI}
-      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI}
-      Authentication__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY}
-      Authentication__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET}
-      TIKTOK_REDIRECT_URI: ${TIKTOK_REDIRECT_URI}
+      # CORS: origen(es) del frontend que pueden llamar a la API con cookies
+      Cors__AllowedOrigins: "${FRONTEND_URL:-http://localhost:3000},${PORTAL2_URL:-http://localhost:3001}"
+      # Primer administrador (correo o proveedor:id). Los demás roles se
+      # asignan desde el panel de administración del frontend.
+      Seguridad__AdministradoresIniciales: "${ADMINISTRADORES_INICIALES:-${ROLES_ADMINISTRADOR:-}}"
+      # Datos de ejemplo para los reportes (solo si las tablas están vacías)
+      Database__SeedDemo: "${DATOS_DEMO:-true}"
+      # Prometheus (red interna de Docker)
+      Prometheus__Url: "http://prometheus:9090"
+      Authentication__Twitch__ClientId: ${TWITCH_CLIENT_ID:-}
+      Authentication__Twitch__ClientSecret: ${TWITCH_CLIENT_SECRET:-}
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      Authentication__Discord__ClientId: ${DISCORD_CLIENT_ID:-}
+      Authentication__Discord__ClientSecret: ${DISCORD_CLIENT_SECRET:-}
+      Authentication__Spotify__ClientId: ${SPOTIFY_CLIENT_ID:-}
+      Authentication__Spotify__ClientSecret: ${SPOTIFY_CLIENT_SECRET:-}
+      Authentication__Dropbox__ClientId: ${DROPBOX_CLIENT_ID:-}
+      Authentication__Dropbox__ClientSecret: ${DROPBOX_CLIENT_SECRET:-}
+      Authentication__Slack__ClientId: ${SLACK_CLIENT_ID:-}
+      Authentication__Slack__ClientSecret: ${SLACK_CLIENT_SECRET:-}
+      # TikTok (Login Kit Web). Requiere HTTPS: usa el túnel ngrok (ver docs/ENTREGA.md)
+      Authentication__TikTok__ClientKey: ${TIKTOK_CLIENT_KEY:-}
+      Authentication__TikTok__ClientSecret: ${TIKTOK_CLIENT_SECRET:-}
+      TIKTOK_REDIRECT_URI: ${TIKTOK_REDIRECT_URI:-}
+      # Dirección pública de la API (ahí se crea la sesión tras el login con TikTok)
+      Api__PublicUrl: "${API_URL:-http://localhost:8080}"
+      DROPBOX_REDIRECT_URI: ${DROPBOX_REDIRECT_URI:-http://localhost:8080/signin-dropbox}
+      SLACK_REDIRECT_URI: ${SLACK_REDIRECT_URI:-https://localhost:8443/signin-slack}
+    volumes:
+      - dp_keys:/keys
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: monitor-frontend
+    environment:
+      # Direcciones que usará el NAVEGADOR (no los nombres internos de Docker)
+      API_URL: "${API_URL:-http://localhost:8080}"
+      FRONTEND_URL: "${FRONTEND_URL:-http://localhost:3000}"
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - api
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
+  # Segunda aplicación para demostrar SSO: comparte la sesión del backend
+  portal2:
+    build:
+      context: ./portal2
+      dockerfile: Dockerfile
+    container_name: monitor-portal2
+    environment:
+      API_URL: "${API_URL:-http://localhost:8080}"
+      PORTAL2_URL: "${PORTAL2_URL:-http://localhost:3001}"
+      APP1_URL: "${FRONTEND_URL:-http://localhost:3000}"
+    ports:
+      - "127.0.0.1:${PORTAL2_PORT:-3001}:80"
+    depends_on:
+      - api
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: monitor-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=7d"
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - monitor_red
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: monitor-node-exporter
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    pid: host
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
     networks:
       - monitor_red
     restart: unless-stopped
@@ -53,38 +136,9 @@ services:
       retries: 10
     restart: unless-stopped
 
-  prometheus:
-    image: prom/prometheus:latest
-    container_name: monitor-final-prometheus
-    ports:
-      - "127.0.0.1:9090:9090"
-    volumes:
-      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus_data:/prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
-    networks:
-      - monitor_red
-    restart: unless-stopped
-
-  node-exporter:
-    image: prom/node-exporter:latest
-    container_name: monitor-final-node-exporter
-    ports:
-      - "127.0.0.1:9100:9100"
-    volumes:
-      - /:/host:ro
-    command:
-      - "--path.rootfs=/host"
-      - "--collector.filesystem.mount-points-exclude=^/run/user($|/)"
-    networks:
-      - monitor_red
-    restart: unless-stopped
-
 volumes:
   postgres_data:
+  dp_keys:
   prometheus_data:
 
 networks:

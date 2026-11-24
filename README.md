@@ -86,7 +86,9 @@ Se desarrollará una interfaz que permita:
 Se contempla la posibilidad de ampliar el sistema con:
 
 - **SSO (Single Sign-On):** centralización de la autenticación y administración de sesiones.
-- **GitHub:** proveedor adicional de inicio de sesión.
+- **Monitoreo (Prometheus):** [docs/PROMETHEUS.md](docs/PROMETHEUS.md) · **Entrega y pruebas paso a paso:** [docs/ENTREGA.md](docs/ENTREGA.md) · **Pull Requests:** [docs/PULL_REQUESTS.md](docs/PULL_REQUESTS.md)
+
+**GitHub:** proveedor adicional de inicio de sesión.
 - **TikTok:** integración mediante Login Kit.
 - **cAdvisor:** recopilación de métricas individuales de contenedores.
 
@@ -117,6 +119,9 @@ PROYECTO-FINAL/
 │   └── Dockerfile
 │
 ├── frontend/
+│   ├── public/            (index.html, app.js, styles.css)
+│   ├── Dockerfile
+│   └── nginx.conf
 │
 ├── prometheus/
 │   └── prometheus.yml
@@ -125,6 +130,8 @@ PROYECTO-FINAL/
 ├── .gitignore
 ├── despliegue.yml
 ├── docker-compose.release.yml
+├── docs/
+├── scripts/
 ├── CONTRIBUTING.md
 └── README.md
 ```
@@ -180,6 +187,14 @@ Consultar los registros del backend:
 
 ```bash
 docker logs -f monitor-api
+```
+
+Con este único comando se levantan **PostgreSQL, backend y frontend**.
+
+El frontend se encuentra en:
+
+```text
+http://localhost:3000
 ```
 
 La API se encuentra disponible en:

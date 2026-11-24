@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal de Soporte</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="barra">
+    <h1><svg class="marca" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>Portal de Soporte <small class="aviso">(segunda aplicación)</small></h1>
+    <div id="zona-usuario" class="oculto">
+      <span id="usuario-texto"></span>
+      <button id="btn-logout" class="btn btn-logout">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <section id="vista-cargando" class="tarjeta">
+      <p>Comprobando si ya tienes una sesión iniciada…</p>
+    </section>
+
+    <!-- Sin sesión -->
+    <section id="vista-login" class="tarjeta oculto">
+      <h2>No hay sesión iniciada</h2>
+      <p>Inicia sesión aquí con cualquier proveedor. Después abre la aplicación principal y verás que ya estás dentro.</p>
+      <div class="botones-login" id="botones-login"></div>
+      <p id="mensaje-login" class="aviso"></p>
+    </section>
+
+    <!-- Con sesión (SSO) -->
+    <section id="vista-app" class="oculto">
+      <div class="tarjeta">
+        <h2 class="exito">Sesión detectada automáticamente (SSO)</h2>
+        <p>Esta aplicación no te pidió usuario ni contraseña: reconoció la sesión que ya tenías abierta con el mismo proveedor de identidad.</p>
+        <dl id="identidad" class="identidad"></dl>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Probar el Single Sign-On</h2>
+        <ol>
+          <li>Abre la <a id="enlace-app1" href="#">aplicación principal de monitoreo</a>: entrarás sin volver a iniciar sesión.</li>
+          <li>Cierra sesión en cualquiera de las dos aplicaciones.</li>
+          <li>Recarga la otra: también habrá cerrado sesión.</li>
+        </ol>
+      </div>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

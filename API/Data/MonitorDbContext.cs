@@ -28,6 +28,10 @@ public class MonitorDbContext : DbContext
     public DbSet<Notificacion> Notificaciones { get; set; }
     public DbSet<HistorialAlerta> HistorialAlertas { get; set; }
 
+    // Seguridad: usuarios y roles
+    public DbSet<Usuario> Usuarios { get; set; }
+    public DbSet<Rol> Roles { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -96,6 +100,20 @@ public class MonitorDbContext : DbContext
             .WithMany(a => a.Notificaciones)
             .HasForeignKey(n => n.AlertaId)
             .OnDelete(DeleteBehavior.Restrict);
+
+        // Seguridad: usuarios (N) <-> (N) roles
+        modelBuilder.Entity<Usuario>()
+            .HasIndex(u => new { u.Proveedor, u.ProveedorId })
+            .IsUnique();
+
+        modelBuilder.Entity<Rol>()
+            .HasIndex(r => r.Nombre)
+            .IsUnique();
+
+        modelBuilder.Entity<Usuario>()
+            .HasMany(u => u.Roles)
+            .WithMany(r => r.Usuarios)
+            .UsingEntity(j => j.ToTable("usuarios_roles"));
 
         modelBuilder.Entity<HistorialAlerta>()
             .HasOne(h => h.Alerta)

@@ -2,7 +2,11 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.AspNetCore.DataProtection;
+using MonitorServidores;
 using MonitorServidores.Data;
+using MonitorServidores.Security;
 using Scalar.AspNetCore;
 using System.Security.Claims;
 using System.Net.Http.Headers;
@@ -20,6 +24,9 @@ var conexion = builder.Configuration.GetConnectionString("Postgres")
 
 builder.Services.AddDbContext<MonitorDbContext>(options =>
     options.UseNpgsql(conexion)
+        // EF 9+ aborta el arranque si el snapshot difiere en un detalle menor
+        // del modelo; las migraciones se siguen aplicando igual.
+        .ConfigureWarnings(w => w.Ignore(RelationalEventId.PendingModelChangesWarning))
 );
 
 // =====================================================
@@ -28,6 +35,57 @@ builder.Services.AddDbContext<MonitorDbContext>(options =>
 
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+
+// Cliente HTTP hacia TikTok (Login Kit Web, ver TikTokEndpoints.cs)
+builder.Services.AddHttpClient("TikTok", cliente =>
+{
+    cliente.Timeout = TimeSpan.FromSeconds(20);
+});
+
+// Cliente HTTP hacia Prometheus (lo usa MetricasController)
+builder.Services.AddHttpClient("prometheus", cliente =>
+{
+    cliente.BaseAddress = new Uri(
+        builder.Configuration["Prometheus:Url"] ?? "http://prometheus:9090");
+    cliente.Timeout = TimeSpan.FromSeconds(5);
+});
+
+// =====================================================
+// 2.1 CLAVES COMPARTIDAS (varias instancias del backend)
+// =====================================================
+// La cookie de sesión se cifra con Data Protection. Para que cualquiera de las
+// instancias reconozca una sesión creada por otra, todas deben usar el mismo
+// nombre de aplicación y el mismo almacén de claves (volumen compartido).
+
+var dataProtection = builder.Services
+    .AddDataProtection()
+    .SetApplicationName("MonitorServidores");
+
+var rutaClaves = builder.Configuration["DataProtection:KeysPath"];
+if (!string.IsNullOrWhiteSpace(rutaClaves))
+{
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(rutaClaves));
+}
+
+// =====================================================
+// 2.2 CORS PARA EL FRONTEND
+// =====================================================
+
+var origenesPermitidos = (builder.Configuration["Cors:AllowedOrigins"]
+        ?? "http://localhost:3000")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    .Select(o => o.TrimEnd('/'))
+    .ToArray();
+
+builder.Services.AddCors(opciones =>
+{
+    opciones.AddPolicy("Frontend", politica =>
+        politica
+            .WithOrigins(origenesPermitidos)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials());
+});
 
 // ======================================================================
 // 3. AUTENTICACIÓN CON TWITCH, GOOGLE, DISCORD, SPOTIFY, DROPBOX Y SLACK
@@ -41,6 +99,7 @@ var autenticacion = builder.Services
         options.Cookie.HttpOnly = true;
         options.ExpireTimeSpan = TimeSpan.FromHours(2);
         options.SlidingExpiration = true;
+        options.Cookie.SameSite = SameSiteMode.Lax;
 
         options.Events.OnRedirectToLogin = context =>
         {
@@ -302,10 +361,21 @@ if (!string.IsNullOrEmpty(builder.Configuration["Authentication:Slack:ClientId"]
 // 4. AUTORIZACIÓN
 // =====================================================
 
-builder.Services.AddAuthorization();
-builder.Services.AddHttpClient("TikTok", client =>
+builder.Services.AddTransient<IClaimsTransformation, RolesClaimsTransformation>();
+
+builder.Services.AddAuthorization(opciones =>
 {
-    client.Timeout = TimeSpan.FromSeconds(20);
+    opciones.AddPolicy(Politicas.ReporteServidores, p =>
+        p.RequireRole(Roles.Administrador, Roles.AnalistaServidores));
+
+    opciones.AddPolicy(Politicas.ReporteIncidentes, p =>
+        p.RequireRole(Roles.Administrador, Roles.AnalistaIncidentes));
+
+    opciones.AddPolicy(Politicas.ReporteAlertas, p =>
+        p.RequireRole(Roles.Administrador, Roles.AnalistaAlertas));
+
+    opciones.AddPolicy(Politicas.Metricas, p =>
+        p.RequireRole(Roles.Administrador, Roles.AnalistaServidores));
 });
 
 // =====================================================
@@ -318,12 +388,20 @@ var app = builder.Build();
 // 6. APLICAR MIGRACIONES DE POSTGRESQL
 // =====================================================
 
-using (var scope = app.Services.CreateScope())
+if (builder.Configuration.GetValue("Database:ApplyMigrations", true))
 {
+    using var scope = app.Services.CreateScope();
+
     var db = scope.ServiceProvider
         .GetRequiredService<MonitorDbContext>();
 
     db.Database.Migrate();
+
+    // Roles del sistema (siempre) y datos de ejemplo (opcional)
+    DatosIniciales.SembrarRoles(db);
+
+    if (builder.Configuration.GetValue("Database:SeedDemo", false))
+        DatosIniciales.SembrarDemo(db);
 }
 
 // =====================================================
@@ -336,6 +414,8 @@ app.MapScalarApiReference();
 // =====================================================
 // 8. MIDDLEWARE DE AUTENTICACIÓN
 // =====================================================
+
+app.UseCors("Frontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
@@ -412,6 +492,10 @@ app.MapGet("/", () => Results.Content(
                 background-color: #611f69;
             }
 
+            .tiktok {
+                background-color: #111111;
+            }
+
             .logout {
                 background-color: #dc3545;
             }
@@ -460,9 +544,10 @@ app.MapGet("/", () => Results.Content(
                 Iniciar sesión con Slack
             </a>
 
-          <a href="/login/tiktok" class="boton" style="background-color:#111;">
-            Iniciar sesión con TikTok
+            <a href="/login/tiktok" class="boton tiktok">
+                Iniciar sesión con TikTok
             </a>
+
             <br>
 
             <button class="boton logout" onclick="cerrarSesion()">
@@ -472,7 +557,6 @@ app.MapGet("/", () => Results.Content(
             <h2>Estado de la sesión</h2>
 
             <pre id="estado">Comprobando...</pre>
-
 
             <p>
                 <a href="/scalar/v1">
@@ -531,141 +615,93 @@ app.MapGet("/", () => Results.Content(
 ));
 
 // =====================================================
-// 10. INICIAR SESIÓN CON TWITCH
+// 10. INICIAR SESIÓN (todos los proveedores)
 // =====================================================
+// GET /login/{proveedor}?returnUrl=http://localhost:3000
+// returnUrl solo se acepta si es una ruta local o pertenece a un origen
+// permitido en Cors:AllowedOrigins (evita redirecciones abiertas).
 
-app.MapGet("/login/twitch", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Twitch" }
-    )
-);
-
-// =====================================================
-// 11. INICIAR SESIÓN CON GOOGLE
-// =====================================================
-
-app.MapGet("/login/google", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Google" }
-    )
-);
-
-// =====================================================
-// 12. INICIAR SESIÓN CON DISCORD
-// =====================================================
-
-app.MapGet("/login/discord", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Discord" }
-    )
-);
-
-// =====================================================
-// 13. INICIAR SESIÓN CON SPOTIFY
-// =====================================================
-
-app.MapGet("/login/spotify", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Spotify" }
-    )
-);
-
-// =====================================================
-// INICIAR SESIÓN CON DROPBOX
-// =====================================================
-
-app.MapGet("/login/dropbox", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Dropbox" }
-    )
-);
-
-// =====================================================
-// INICIAR SESIÓN CON SLACK
-// =====================================================
-
-app.MapGet("/login/slack", () =>
-    Results.Challenge(
-        new AuthenticationProperties { RedirectUri = "/" },
-        new[] { "Slack" }
-    )
-);
-
-// =====================================================
-// 14. CONSULTAR USUARIO AUTENTICADO
-// =====================================================
-
-app.MapGet("/auth/usuario", (HttpContext context) =>
+var proveedoresValidos = new[]
 {
-    var usuario = context.User;
+    "Twitch", "Google", "Discord", "Spotify", "Dropbox", "Slack"
+};
 
-    return Results.Ok(new
+bool EsRetornoPermitido(string url)
+{
+    if (url.StartsWith('/') && !url.StartsWith("//") && !url.StartsWith("/\\"))
+        return true;
+
+    return Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && origenesPermitidos.Contains(
+            uri.GetLeftPart(UriPartial.Authority),
+            StringComparer.OrdinalIgnoreCase);
+}
+
+app.MapGet("/login/{proveedor}", async (
+    string proveedor,
+    string? returnUrl,
+    IAuthenticationSchemeProvider esquemas) =>
+{
+    var nombre = proveedoresValidos.FirstOrDefault(p =>
+        p.Equals(proveedor, StringComparison.OrdinalIgnoreCase));
+
+    if (nombre is null || await esquemas.GetSchemeAsync(nombre) is null)
     {
-        Autenticado = usuario.Identity?.IsAuthenticated ?? false,
+        return Results.NotFound(new
+        {
+            mensaje = $"El proveedor '{proveedor}' no está configurado."
+        });
+    }
+
+    var destino = "/";
+
+    if (!string.IsNullOrWhiteSpace(returnUrl) && EsRetornoPermitido(returnUrl))
+        destino = returnUrl;
+
+    return Results.Challenge(
+        new AuthenticationProperties { RedirectUri = destino },
+        new[] { nombre });
+});
+
+// =====================================================
+// 11. CONSULTAR USUARIO AUTENTICADO
+// =====================================================
+
+app.MapGet("/auth/usuario", (ClaimsPrincipal usuario) =>
+    Results.Ok(new
+    {
+        Autenticado = true,
+        Id = IdentificadorUsuario.Obtener(usuario),
         Nombre = usuario.Identity?.Name,
         Proveedor = usuario.FindFirst("proveedor")?.Value ?? "Desconocido",
-        Email = usuario.FindFirst(ClaimTypes.Email)?.Value
-    });
-})
-.RequireAuthorization();
+        Email = usuario.FindFirst(ClaimTypes.Email)?.Value,
+        Roles = usuario.FindAll(ClaimTypes.Role).Select(c => c.Value).ToArray()
+    }))
+    .RequireAuthorization();
 
 // =====================================================
-// 15. CERRAR SESIÓN
+// 12. CERRAR SESIÓN
 // =====================================================
 
-app.MapPost("/logout", () =>
-    Results.SignOut(
-        new AuthenticationProperties
-        {
-            RedirectUri = "/"
-        },
-        new[]
-        {
-            CookieAuthenticationDefaults.AuthenticationScheme
-        }
-    )
-);
+app.MapPost("/logout", async (HttpContext contexto) =>
+{
+    await contexto.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Ok(new { mensaje = "Sesión cerrada." });
+});
+
+// =====================================================
+// 13. SALUD E INSTANCIA (público; sirve para probar cada puerto)
+// =====================================================
+
+app.MapGet("/health", () => Results.Ok(new
+{
+    estado = "ok",
+    instancia = builder.Configuration["INSTANCIA_NOMBRE"] ?? Environment.MachineName,
+    fechaUtc = DateTime.UtcNow
+}));
+
+app.MapTikTokEndpoints();
 
 app.MapControllers();
 
-// TÉRMINOS DE SERVICIO
-app.MapGet("/terminos", () => Results.Content(
-    """
-    <html lang="es">
-    <head><meta charset="UTF-8"><title>Términos de servicio</title></head>
-    <body>
-        <h1>Términos de servicio - Monitor Servidores</h1>
-        <p>Monitor Servidores es una aplicación académica
-        para gestionar servidores, monitoreos, alertas y reportes.</p>
-        <p>Los usuarios deben utilizar la aplicación de manera
-        responsable y con autorización.</p>
-    </body>
-    </html>
-    """, "text/html; charset=utf-8"));
-
-// POLÍTICA DE PRIVACIDAD
-app.MapGet("/privacidad", () => Results.Content(
-    """
-    <html lang="es">
-    <head><meta charset="UTF-8"><title>Política de privacidad</title></head>
-    <body>
-        <h1>Política de privacidad - Monitor Servidores</h1>
-        <p>La aplicación utiliza autenticación mediante
-        proveedores externos, incluido TikTok.</p>
-        <p>Para gestionar el inicio de sesión se utilizan
-        identificadores y datos básicos del perfil autorizados
-        por el usuario, además de cookies de sesión.</p>
-        <p>Esta política debe completarse con información sobre
-        el responsable, conservación y eliminación de los datos.</p>
-    </body>
-    </html>
-    """, "text/html; charset=utf-8"));
-
-
-app.MapTikTokEndpoints();
 app.Run();

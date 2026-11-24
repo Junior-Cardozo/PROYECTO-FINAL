@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Monitoreo de Servidores</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="barra">
+    <h1><svg class="marca" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12h4l3-8 4 16 3-8h6"/></svg>Monitoreo de Servidores</h1>
+    <div id="zona-usuario" class="oculto">
+      <span id="usuario-texto"></span>
+      <button id="btn-logout" class="btn btn-logout">Cerrar sesión</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- Sin sesión -->
+    <section id="vista-login" class="tarjeta oculto">
+      <h2>Iniciar sesión</h2>
+      <p>Elige un proveedor para ingresar.</p>
+      <div class="botones-login" id="botones-login"></div>
+      <p id="mensaje-login" class="aviso"></p>
+    </section>
+
+    <!-- Con sesión -->
+    <section id="vista-app" class="oculto">
+      <div class="tarjeta">
+        <h2>Identidad</h2>
+        <dl id="identidad" class="identidad"></dl>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Estado del backend</h2>
+        <p id="estado-backend">Consultando…</p>
+      </div>
+
+      <div class="tarjeta" id="tarjeta-metricas">
+        <h2>Monitoreo del servidor <small class="aviso">(Prometheus + Node Exporter)</small></h2>
+        <div id="metricas"><p class="aviso">Consultando…</p></div>
+      </div>
+
+      <div class="tarjeta">
+        <h2>Reportes autorizados</h2>
+        <div id="lista-reportes" class="lista-reportes"></div>
+        <div id="detalle-reporte"></div>
+      </div>
+
+      <div class="tarjeta oculto" id="tarjeta-usuarios">
+        <h2>Administración de usuarios y roles</h2>
+        <p class="aviso">Los usuarios se registran solos al iniciar sesión por primera vez (sin roles = sin permisos). Marca los roles y se guardan al instante.</p>
+        <p id="mensaje-usuarios" class="aviso"></p>
+        <div id="tabla-usuarios" class="tabla-wrap"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="config.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
