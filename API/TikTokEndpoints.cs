@@ -110,13 +110,64 @@ public static class TikTokEndpoints
 
             using var respuestaToken = await cliente.PostAsync(
                 "https://open.tiktokapis.com/v2/oauth/token/", formulario);
-            if (!respuestaToken.IsSuccessStatusCode)
-                return Results.Problem("TikTok rechazó el intercambio del código OAuth.", statusCode: 502);
 
-            using var tokens = JsonDocument.Parse(await respuestaToken.Content.ReadAsStringAsync());
-            if (!tokens.RootElement.TryGetProperty("access_token", out var accesoJson) ||
-                !tokens.RootElement.TryGetProperty("open_id", out var openIdJson))
-                return Results.Problem("TikTok no devolvió la identidad esperada.", statusCode: 502);
+            // TikTok puede devolver un JSON de error en vez de access_token/open_id.
+            // No escribimos en logs ni mostramos el cuerpo completo porque podría
+            // contener tokens o información sensible.
+            JsonDocument documentoToken;
+            try
+            {
+                documentoToken = JsonDocument.Parse(
+                    await respuestaToken.Content.ReadAsStringAsync());
+            }
+            catch (JsonException)
+            {
+                app.Logger.LogWarning("TikTok OAuth devolvió contenido no JSON. HTTP {Estado}",
+                    (int)respuestaToken.StatusCode);
+                return Results.Problem(
+                    "TikTok devolvió una respuesta inesperada al solicitar el token.",
+                    statusCode: 502);
+            }
+
+            using var tokens = documentoToken;
+            var raizToken = tokens.RootElement;
+            if (raizToken.ValueKind != JsonValueKind.Object)
+                return Results.Problem("Respuesta OAuth de TikTok no válida.", statusCode: 502);
+
+            // Capturamos el tipo de error, pero NO el client_secret, code ni access_token.
+            if (raizToken.TryGetProperty("error", out var errorTikTok))
+            {
+                var codigoError = errorTikTok.ValueKind == JsonValueKind.String
+                    ? errorTikTok.GetString() : null;
+                if (!string.IsNullOrWhiteSpace(codigoError))
+                {
+                    app.Logger.LogWarning(
+                        "TikTok OAuth rechazó el intercambio: {Error}, HTTP {Estado}",
+                        codigoError, (int)respuestaToken.StatusCode);
+                    return Results.Problem($"Error OAuth de TikTok: {codigoError}",
+                        statusCode: 502);
+                }
+            }
+
+            if (!respuestaToken.IsSuccessStatusCode)
+            {
+                app.Logger.LogWarning("TikTok OAuth HTTP {Estado} sin código de error reconocible",
+                    (int)respuestaToken.StatusCode);
+                return Results.Problem("TikTok rechazó el intercambio del código OAuth.",
+                    statusCode: 502);
+            }
+
+            if (!raizToken.TryGetProperty("access_token", out var accesoJson) ||
+                accesoJson.ValueKind != JsonValueKind.String ||
+                !raizToken.TryGetProperty("open_id", out var openIdJson) ||
+                openIdJson.ValueKind != JsonValueKind.String)
+            {
+                app.Logger.LogWarning(
+                    "TikTok OAuth respondió HTTP {Estado}, pero no incluyó access_token y open_id",
+                    (int)respuestaToken.StatusCode);
+                return Results.Problem("TikTok no devolvió la identidad esperada.",
+                    statusCode: 502);
+            }
 
             var token = accesoJson.GetString();
             var openId = openIdJson.GetString();
