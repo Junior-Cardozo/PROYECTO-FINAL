@@ -1,4 +1,4 @@
-# Sistema de Monitoreo de Servidores
+# Sistema de Monitoreo de Servidores ;;
 
 Proyecto académico desarrollado para la asignatura de Tecnología Web, orientado al monitoreo de servidores, administración de incidentes, autenticación de usuarios y visualización de métricas mediante una aplicación web.
 
@@ -89,6 +89,7 @@ Se contempla la posibilidad de ampliar el sistema con:
 - **Monitoreo (Prometheus):** [docs/PROMETHEUS.md](docs/PROMETHEUS.md) · **Entrega y pruebas paso a paso:** [docs/ENTREGA.md](docs/ENTREGA.md) · **Pull Requests:** [docs/PULL_REQUESTS.md](docs/PULL_REQUESTS.md)
 
 **GitHub:** proveedor adicional de inicio de sesión.
+
 - **TikTok:** integración mediante Login Kit.
 - **cAdvisor:** recopilación de métricas individuales de contenedores.
 
@@ -96,15 +97,15 @@ Estas funcionalidades se consideran ampliaciones y no sustituyen los requisitos 
 
 ## Arquitectura del sistema
 
-| Componente | Función |
-|---|---|
-| Frontend | Interfaz de usuario y dashboard. |
-| ASP.NET Core | API, autenticación y autorización. |
-| PostgreSQL | Almacenamiento de información. |
-| Prometheus | Recopilación y almacenamiento de métricas. |
-| Node Exporter | Métricas del sistema operativo. |
-| Docker | Ejecución de servicios en contenedores. |
-| Docker Compose | Administración del entorno. |
+| Componente     | Función                                    |
+| -------------- | ------------------------------------------ |
+| Frontend       | Interfaz de usuario y dashboard.           |
+| ASP.NET Core   | API, autenticación y autorización.         |
+| PostgreSQL     | Almacenamiento de información.             |
+| Prometheus     | Recopilación y almacenamiento de métricas. |
+| Node Exporter  | Métricas del sistema operativo.            |
+| Docker         | Ejecución de servicios en contenedores.    |
+| Docker Compose | Administración del entorno.                |
 
 ## Estructura del proyecto
 
@@ -224,11 +225,11 @@ El proyecto contempla la publicación de una imagen del backend en Docker Hub.
 El entorno de release utilizará cuatro instancias del backend, todas basadas en la misma versión de imagen.
 
 | Instancia | Puerto externo |
-|---|---|
-| Backend 1 | 5001 |
-| Backend 2 | 5002 |
-| Backend 3 | 5003 |
-| Backend 4 | 5004 |
+| --------- | -------------- |
+| Backend 1 | 5001           |
+| Backend 2 | 5002           |
+| Backend 3 | 5003           |
+| Backend 4 | 5004           |
 
 Las cuatro instancias compartirán la configuración de conexión a PostgreSQL y la configuración necesaria para mantener las sesiones de autenticación.
 
@@ -236,11 +237,11 @@ El despliegue se realizará mediante un archivo Compose independiente, utilizand
 
 ## Organización del equipo
 
-| Integrante | Responsabilidades |
-|---|---|
+| Integrante           | Responsabilidades                                                                                                               |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
 | Integrante 1 (Líder) | Autenticación de los seis proveedores, restricciones de acceso, frontend, integración general, Docker Hub y Compose de release. |
-| Integrante 2 | Prometheus, Node Exporter, recopilación de métricas y visualización de información del servidor. |
-| Integrante 3 | Reportes autorizados, consultas SQL, endpoints protegidos y documentación de sus tablas. |
+| Integrante 2         | Prometheus, Node Exporter, recopilación de métricas y visualización de información del servidor.                                |
+| Integrante 3         | Reportes autorizados, consultas SQL, endpoints protegidos y documentación de sus tablas.                                        |
 
 ### Responsabilidades compartidas
 
